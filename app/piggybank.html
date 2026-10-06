@@ -95,8 +95,8 @@ main { display: grid; gap: 18px; padding-top: 6px; }
 .hero .big .of { font-family: var(--font-body); font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-left: 4px; }
 .hero-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .meter { position: relative; height: 12px; background: var(--sunk); border-radius: 999px; overflow: visible; }
-.meter .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--accent); max-width: 100%; }
-.meter .fill.over { background: var(--over); }
+.meter .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--ok); max-width: 100%; transition: width .3s, background-color .3s; }
+@media (prefers-reduced-motion: reduce) { .meter .fill { transition: none; } }
 .meter .pace { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); border-radius: 2px; opacity: .55; }
 .hero .foot { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
 
@@ -409,6 +409,15 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     return `<span class="pill ok">Under budget</span>`;
   };
 
+  // Green until half the budget is used, fades to amber by 85%, then to red at 100% and beyond.
+  function meterColor(pct) {
+    const mix = (from, to, t) => `color-mix(in oklab, ${to} ${Math.round(t * 100)}%, ${from})`;
+    if (pct <= 50) return 'var(--ok)';
+    if (pct <= 85) return mix('var(--ok)', 'var(--warn)', (pct - 50) / 35);
+    if (pct < 100) return mix('var(--warn)', 'var(--over)', (pct - 85) / 15);
+    return 'var(--over)';
+  }
+
   function header() {
     const s = weekStart(ui.week), e = addDays(s, 6);
     document.getElementById('weekTitle').textContent = ui.week === 0 ? 'This week' : ui.week === -1 ? 'Last week' : `${-ui.week} weeks ago`;
@@ -451,7 +460,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
         <div class="hero-row"><span class="eyebrow">Spent ${ui.week === 0 ? 'so far' : 'that week'}</span>${statusPill(s.status, s)}</div>
         <div class="big num">${$(s.total)}<span class="of">of ${$0(s.budget)}</span></div>
         <div class="meter" role="img" aria-label="${Math.round(pct)}% of weekly budget used">
-          <div class="fill ${s.total > s.budget ? 'over' : ''}" style="width:${Math.min(pct, 100)}%"></div>
+          <div class="fill" style="width:${Math.min(pct, 100)}%;background:${meterColor(pct)}"></div>
           ${s.days < 7 ? `<div class="pace" style="left:${pacePct}%" title="Where you'd be spending evenly"></div>` : ''}
         </div>
         <div class="foot num">
