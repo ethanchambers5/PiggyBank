@@ -418,6 +418,8 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     return 'var(--over)';
   }
 
+  const budgetPct = c => c.budget ? Math.round(c.spent / c.budget * 100) : (c.spent ? 100 : 0);
+
   function header() {
     const s = weekStart(ui.week), e = addDays(s, 6);
     document.getElementById('weekTitle').textContent = ui.week === 0 ? 'This week' : ui.week === -1 ? 'Last week' : `${-ui.week} weeks ago`;
@@ -477,8 +479,8 @@ main { display: grid; gap: 18px; padding-top: 6px; }
           ${spentCats.length ? spentCats.map(c => `
             <div class="cat-row">
               <span class="cat-name"><i class="dot" style="background:${color(c.id)}"></i>${c.name}</span>
-              <span class="cat-amt num">${$(c.spent)}<small>${s.total ? Math.round(c.spent / s.total * 100) : 0}% of spending</small></span>
-              <div class="bar"><i style="width:${c.spent / top.spent * 100}%;background:${color(c.id)}"></i></div>
+              <span class="cat-amt num">${$(c.spent)}<small>of ${$0(c.budget)} · ${s.total ? Math.round(c.spent / s.total * 100) : 0}% of spending</small></span>
+              <div class="bar" role="img" aria-label="${budgetPct(c)}% of ${c.name} budget used"><i style="width:${Math.min(budgetPct(c), 100)}%;background:${meterColor(budgetPct(c))}"></i></div>
             </div>`).join('') : `<div class="empty">No spending this week yet.</div>`}
         </div>
       </section>
