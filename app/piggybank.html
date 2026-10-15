@@ -179,6 +179,36 @@ main { display: grid; gap: 18px; padding-top: 6px; }
 .btn.danger { background: var(--over-soft); color: var(--over); flex: 0 0 auto; padding-inline: 18px; }
 .err { color: var(--over); font-size: 13px; margin: 0; }
 
+/* Import */
+.banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--accent-soft); font-size: 14px; }
+.banner p { margin: 0; flex: 1; min-width: 0; }
+.btn.small { flex: 0 0 auto; padding: 9px 14px; font-size: 14px; border-radius: 12px; }
+.import-cta { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 14px 16px; }
+.import-cta:hover { background: var(--sunk); }
+.import-cta b { display: block; }
+.import-cta span { font-size: 13px; color: var(--muted); }
+.import-cta .ico { width: 38px; height: 38px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
+.vh { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.drop { display: grid; gap: 4px; justify-items: center; text-align: center; padding: 20px 16px; border: 2px dashed var(--line); border-radius: 16px; cursor: pointer; }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop b { color: var(--accent); }
+.drop span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.vh:focus-visible + .drop { outline: 2px solid var(--accent); outline-offset: 2px; }
+.map { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.map .field { min-width: 0; }
+.map .field select { padding: 10px; font-size: 15px; min-width: 0; }
+.import-sum { padding: 12px 14px; border-radius: 14px; background: var(--sunk); font-size: 14px; }
+.import-sum b { font-weight: 700; }
+.preview { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.preview .pv { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 9px 12px; border-top: 1px solid var(--line); font-size: 14px; }
+.preview .pv:first-child { border-top: 0; }
+.preview .pv b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.preview .pv small { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.preview .more { padding: 8px 12px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
+.check input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); flex: none; }
+.btn:disabled { opacity: .45; cursor: default; }
+
 .toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-weight: 600; font-size: 14px; white-space: nowrap; }
 </style>
 
@@ -197,7 +227,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
         </svg>
         Piggy Bank
       </h1>
-      <span class="demo-tag" title="These are made-up transactions for trying the app">Demo data</span>
+      <span class="demo-tag" id="demoTag" title="These are made-up transactions for trying the app">Demo data</span>
     </div>
     <div class="weekbar" id="weekbar">
       <button type="button" id="prevWeek" aria-label="Previous week">‹</button>
@@ -256,6 +286,35 @@ main { display: grid; gap: 18px; padding-top: 6px; }
       <button type="button" class="btn danger" id="delBtn" hidden>Delete</button>
       <button type="button" class="btn ghost" id="cancelBtn">Cancel</button>
       <button type="submit" class="btn primary" id="saveBtn">Save</button>
+    </div>
+  </form>
+</div>
+
+<div class="scrim" id="importScrim" hidden>
+  <form class="sheet" id="importForm" novalidate>
+    <h2>Import a bank statement</h2>
+    <p class="note">Download your transactions as a CSV file from your bank's website or app, then pick it here. The file is read on this device and never uploaded. PDF statements aren't supported yet.</p>
+    <input type="file" id="fFile" class="vh" accept=".csv,text/csv,.txt,text/plain">
+    <label class="drop" for="fFile" id="drop"><b>Choose a CSV file</b><span id="fileName">or drop it here</span></label>
+    <button type="button" class="linkbtn" id="sampleBtn" style="justify-self:start">Try it with a sample statement</button>
+    <div id="importStep" hidden style="display:grid;gap:14px">
+      <div class="map">
+        <div class="field"><label for="mDate">Date column</label><select id="mDate"></select></div>
+        <div class="field"><label for="mDesc">Description column</label><select id="mDesc"></select></div>
+        <div class="field"><label for="mAmt">Amount column</label><select id="mAmt"></select></div>
+        <div class="field"><label for="mSign">Purchases show as</label>
+          <select id="mSign"><option value="neg">Negative (−12)</option><option value="pos">Positive (12)</option></select></div>
+        <div class="field"><label for="mOrder">Date format</label>
+          <select id="mOrder"><option value="mdy">Month / day</option><option value="dmy">Day / month</option></select></div>
+      </div>
+      <div class="import-sum" id="importSum"></div>
+      <div class="preview" id="preview"></div>
+      <label class="check" id="replaceRow"><input type="checkbox" id="fReplace" checked><span>Replace the demo data with my statement</span></label>
+    </div>
+    <p class="err" id="importErr" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn ghost" id="importCancel">Cancel</button>
+      <button type="submit" class="btn primary" id="importGo" disabled>Import</button>
     </div>
   </form>
 </div>
@@ -341,7 +400,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
       }
       for (const r of MONTHLY) if (d.getDate() === r.day) tx.push({ id: id++, date, merchant: r.m, amount: between(...r.a), cat: r.cat });
     }
-    return { tx, budgets: Object.fromEntries(CATS.map(c => [c.id, c.budget])), nextId: id };
+    return { tx, budgets: Object.fromEntries(CATS.map(c => [c.id, c.budget])), nextId: id, demo: true };
   }
 
   // ---------- State (kept in this browser only) ----------
@@ -356,6 +415,14 @@ main { display: grid; gap: 18px; padding-top: 6px; }
   try { const t = localStorage.getItem(KEY + '.tab'); if (t) ui.tab = t; } catch (e) {}
 
   // ---------- Calculations ----------
+  const isDemo = () => data.demo !== false;
+  const weekOffOf = date => Math.round((mondayOf(parse(date)) - thisMonday) / (7 * DAY));
+  // Oldest week you can step back to: 8 weeks, or further if imported purchases go back further.
+  function minWeek() {
+    const oldest = data.tx.reduce((m, t) => t.date < m ? t.date : m, ymd(today));
+    return Math.min(-(HISTORY_WEEKS - 1), weekOffOf(oldest));
+  }
+  const latestWeek = () => data.tx.length ? Math.min(0, weekOffOf(data.tx.reduce((m, t) => t.date > m ? t.date : m, ''))) : 0;
   function weekTx(off) {
     const s = ymd(weekStart(off)), e = ymd(addDays(weekStart(off), 6));
     return data.tx.filter(t => t.date >= s && t.date <= e);
@@ -407,7 +474,8 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     document.getElementById('weekTitle').textContent = ui.week === 0 ? 'This week' : ui.week === -1 ? 'Last week' : `${-ui.week} weeks ago`;
     document.getElementById('weekRange').textContent = `${fmtShort(s)} – ${fmtShort(e)}`;
     document.getElementById('nextWeek').disabled = ui.week >= 0;
-    document.getElementById('prevWeek').disabled = ui.week <= -(HISTORY_WEEKS - 1);
+    document.getElementById('prevWeek').disabled = ui.week <= minWeek();
+    document.getElementById('demoTag').hidden = !isDemo();
     document.getElementById('weekbar').hidden = ui.tab === 'trends';
     document.querySelectorAll('.tab').forEach(b => b.toggleAttribute('aria-current', b.dataset.tab === ui.tab));
     document.querySelectorAll('.tab[aria-current]').forEach(b => b.setAttribute('aria-current', 'page'));
@@ -440,6 +508,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     }).join('');
 
     view.innerHTML = `
+      ${isDemo() ? `<div class="banner"><p>You're looking at made-up demo data.</p><button type="button" class="btn primary small" data-action="import">Import my statement</button></div>` : ''}
       <section class="card hero">
         <div class="hero-row"><span class="eyebrow">Spent ${ui.week === 0 ? 'so far' : 'that week'}</span>${statusPill(s.status, s)}</div>
         <div class="big num">${$(s.total)}<span class="of">of ${$0(s.budget)}</span></div>
@@ -480,6 +549,10 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     const days = Object.keys(byDay).sort().reverse();
     view.innerHTML = `
       <section class="section">
+        <button type="button" class="card import-cta" data-action="import">
+          <span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg></span>
+          <span><b>Import a bank statement</b><span>Add purchases from a CSV file</span></span>
+        </button>
         <h2>Purchases<small class="num">${s.list.length} · ${$(s.total)}</small></h2>
         ${days.length ? days.map(d => {
           const list = byDay[d].sort((a, b) => b.id - a.id);
@@ -515,17 +588,19 @@ main { display: grid; gap: 18px; padding-top: 6px; }
         <p class="note">Bills like rent or your phone plan are monthly, so some weeks they push Bills over. Set the budget to about a quarter of the monthly cost.</p>
       </section>
       <section class="section">
-        <h2>Demo data</h2>
-        <div class="card pad" style="display:grid;gap:8px">
-          <p class="note">Everything here is made up so you can try the app. Your changes are saved in this browser only.</p>
-          <div class="actions" id="resetArea"><button type="button" class="btn ghost" id="resetBtn">Reset demo data</button></div>
+        <h2>Your data</h2>
+        <div class="card pad" style="display:grid;gap:10px">
+          <p class="note">${isDemo() ? 'Everything here is made up so you can try the app.' : `${data.tx.length} purchases from your statements.`} Your data is saved in this browser only.</p>
+          <button type="button" class="btn primary" data-action="import">Import a bank statement</button>
+          <div class="actions" id="resetArea"><button type="button" class="btn ghost" id="resetBtn">${isDemo() ? 'Reset demo data' : 'Remove my data and go back to demo'}</button></div>
         </div>
       </section>`;
   }
 
   function renderTrends() {
     const N = 6;
-    const weeks = Array.from({ length: N }, (_, i) => { const off = i - (N - 1); return { off, ...summary(off) }; });
+    const end = latestWeek();
+    const weeks = Array.from({ length: N }, (_, i) => { const off = end + i - (N - 1); return { off, ...summary(off) }; });
     const budget = weeks[N - 1].budget;
     const max = Math.max(budget, ...weeks.map(w => w.total)) * 1.1;
     const step = max > 600 ? 200 : max > 300 ? 100 : 50;
@@ -544,6 +619,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     const budgetLine = `<line x1="${L}" x2="${W - R}" y1="${y(budget)}" y2="${y(budget)}" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
 
     const full = weeks.filter(w => w.off < 0);
+    if (!full.length) full.push(weeks[N - 1]);
     const avgs = CATS.map(c => {
       const avg = full.reduce((a, w) => a + w.cats.find(x => x.id === c.id).spent, 0) / full.length;
       const overWeeks = full.filter(w => { const x = w.cats.find(k => k.id === c.id); return x.spent > x.budget; }).length;
@@ -591,7 +667,6 @@ main { display: grid; gap: 18px; padding-top: 6px; }
   const formErr = document.getElementById('formErr');
   fCat.innerHTML = `<option value="auto">Auto</option>` + CATS.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   fDate.max = ymd(today);
-  fDate.min = ymd(weekStart(-(HISTORY_WEEKS - 1)));
 
   function updateGuess() {
     const m = fMerchant.value.trim();
@@ -625,7 +700,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     else data.tx.push({ id: data.nextId++, amount, merchant, cat, date: fDate.value });
     const wasEdit = !!ui.editing;
     // Jump to the week the purchase landed in.
-    ui.week = Math.max(-(HISTORY_WEEKS - 1), Math.min(0, Math.round((mondayOf(parse(fDate.value)) - thisMonday) / (7 * DAY))));
+    ui.week = Math.min(0, weekOffOf(fDate.value));
     save(); closeSheet(); render();
     toast(wasEdit ? 'Saved' : `Added to ${CAT[cat].name}`);
   });
@@ -662,14 +737,227 @@ main { display: grid; gap: 18px; padding-top: 6px; }
       document.getElementById('resetArea').innerHTML = `<button type="button" class="btn ghost" id="resetNo">Keep my changes</button><button type="button" class="btn danger" id="resetYes" style="flex:1">Reset</button>`;
       return;
     }
+    if (e.target.closest('[data-action="import"]')) return openImport();
     if (e.target.id === 'resetNo') return render();
-    if (e.target.id === 'resetYes') { data = makeDemo(); save(); render(); toast('Demo data reset'); }
+    if (e.target.id === 'resetYes') { data = makeDemo(); ui.week = 0; save(); render(); toast('Demo data reset'); }
   });
   view.addEventListener('change', e => {
     const id = e.target.dataset.budget;
     if (!id) return;
     const v = Math.max(0, Math.round(parseFloat(e.target.value) || 0));
     data.budgets[id] = v; save(); render(); toast(`${CAT[id].name} budget set to ${$0(v)}`);
+  });
+
+  // ---------- Import a bank statement (CSV, read locally) ----------
+  function parseCSV(text) {
+    text = text.replace(/^﻿/, '');
+    // Pick the separator used most in the first lines (some banks put account details above the table).
+    const head = text.split(/\r?\n/).slice(0, 20).join('\n').replace(/"[^"]*"/g, '');
+    const delim = [',', ';', '\t'].sort((a, b) => head.split(b).length - head.split(a).length)[0];
+    const rows = []; let row = [], f = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+      else if (c === '"') q = true;
+      else if (c === delim) { row.push(f); f = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+      else f += c;
+    }
+    if (f || row.length) { row.push(f); rows.push(row); }
+    return rows.map(r => r.map(x => x.trim())).filter(r => r.some(x => x));
+  }
+
+  function parseAmount(v) {
+    if (!v) return NaN;
+    let x = v.replace(/[^\d.,()\-+]/g, '');
+    const neg = /^\(.*\)$/.test(x) || /-$/.test(x) || /^-/.test(x) || /\bDR\b/i.test(v);
+    x = x.replace(/[()\-+]/g, '');
+    if (/^\d{1,3}(\.\d{3})*,\d{1,2}$/.test(x) || /^\d+,\d{1,2}$/.test(x)) x = x.replace(/\./g, '').replace(',', '.');
+    else x = x.replace(/,/g, '');
+    const n = parseFloat(x);
+    return isNaN(n) ? NaN : (neg ? -n : n);
+  }
+
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  function parseDate(v, order) {
+    if (!v) return null;
+    let y, m, d, r;
+    const yr = n => (n < 100 ? 2000 + n : n);
+    if ((r = v.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/))) [y, m, d] = [+r[1], +r[2], +r[3]];
+    else if ((r = v.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/))) {
+      [m, d] = order === 'dmy' ? [+r[2], +r[1]] : [+r[1], +r[2]]; y = yr(+r[3]);
+    } else if ((r = v.match(/^(\d{1,2})[ -]([A-Za-z]{3})[A-Za-z]*[ -,]*(\d{2,4})/))) [d, m, y] = [+r[1], MONTHS.indexOf(r[2].toLowerCase()) + 1, yr(+r[3])];
+    else if ((r = v.match(/^([A-Za-z]{3})[A-Za-z]*\.? (\d{1,2}),? (\d{4})/))) [m, d, y] = [MONTHS.indexOf(r[1].toLowerCase()) + 1, +r[2], +r[3]];
+    else return null;
+    const dt = new Date(y, m - 1, d);
+    if (!m || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+    return ymd(dt);
+  }
+
+  // Bank descriptions look like "POS PURCHASE STARBUCKS #10423 SEATTLE WA"; keep the readable part.
+  function cleanMerchant(raw) {
+    let m = raw.replace(/\s+/g, ' ').trim();
+    for (let i = 0; i < 3; i++) m = m.replace(/^(pos|purchase|debit card|debit|card|visa|mastercard|eftpos|contactless|recurring|payment to|direct debit|checkcard|chk card|point of sale|ach|withdrawal)\b[\s:*-]*/i, '');
+    m = m.replace(/^(sq|tst|sp|pp|paypal)\s?\*\s?/i, '')
+      .replace(/\*\s?[A-Z0-9]{4,}.*$/i, '')
+      .replace(/\s*#\s*\d+.*$/, '')
+      .replace(/\s+\d{1,2}\/\d{1,2}.*$/, '')
+      .replace(/\s+x{2,}\d+.*$/i, '')
+      .replace(/\s+\d{4,}.*$/, '')
+      .trim();
+    if (!m) m = raw.trim();
+    if (m === m.toUpperCase()) m = m.toLowerCase().replace(/(^|[\s\-/&])([a-z])/g, (_, a, b) => a + b.toUpperCase());
+    return m.slice(0, 40);
+  }
+
+  const imp = { rows: [], header: [], body: [], parsed: [] };
+  const importScrim = document.getElementById('importScrim');
+  const mDate = document.getElementById('mDate'), mDesc = document.getElementById('mDesc'), mAmt = document.getElementById('mAmt');
+  const mSign = document.getElementById('mSign'), mOrder = document.getElementById('mOrder');
+  const importErr = document.getElementById('importErr'), importGo = document.getElementById('importGo');
+  const fFile = document.getElementById('fFile'), drop = document.getElementById('drop');
+
+  function openImport() {
+    imp.rows = []; imp.parsed = [];
+    fFile.value = '';
+    document.getElementById('fileName').textContent = 'or drop it here';
+    document.getElementById('importStep').hidden = true;
+    document.getElementById('replaceRow').hidden = !isDemo();
+    document.getElementById('fReplace').checked = true;
+    importErr.hidden = true;
+    importGo.disabled = true; importGo.textContent = 'Import';
+    importScrim.hidden = false;
+  }
+  function closeImport() { importScrim.hidden = true; }
+  function importError(msg) { importErr.textContent = msg; importErr.hidden = false; document.getElementById('importStep').hidden = true; importGo.disabled = true; }
+
+  function loadCSV(text, name) {
+    document.getElementById('fileName').textContent = name;
+    importErr.hidden = true;
+    const rows = parseCSV(text);
+    if (rows.length < 2) return importError("This file doesn't look like a CSV of transactions. Download the CSV (or \"Excel/spreadsheet\") export from your bank and try again.");
+    // The header is the first row (within the first 15) that names a date column; banks sometimes put account info above it.
+    let h = rows.slice(0, 15).findIndex(r => r.length >= 3 && r.some(c => /date/i.test(c)) && !r.some(c => parseDate(c, 'mdy')));
+    const width = Math.max(...rows.map(r => r.length));
+    imp.header = h >= 0 ? rows[h].map((c, i) => c || `Column ${i + 1}`) : Array.from({ length: width }, (_, i) => `Column ${i + 1}`);
+    imp.body = rows.slice(h + 1).filter(r => r.length >= 2);
+    const opts = imp.header.map((c, i) => `<option value="${i}">${esc(c)}</option>`).join('');
+    for (const sel of [mDate, mDesc, mAmt]) sel.innerHTML = opts;
+
+    // Guess the columns, first by header name, then by what the cells contain.
+    const sample = imp.body.slice(0, 40);
+    const share = (i, test) => sample.filter(r => test(r[i] || '')).length / (sample.length || 1);
+    const byName = re => imp.header.findIndex(c => re.test(c));
+    const best = score => imp.header.map((_, i) => i).sort((a, b) => score(b) - score(a))[0];
+    let di = byName(/trans.*date|^date$/i); if (di < 0) di = byName(/date/i);
+    if (di < 0 || share(di, v => parseDate(v, 'mdy') || parseDate(v, 'dmy')) < .5) di = best(i => share(i, v => !!(parseDate(v, 'mdy') || parseDate(v, 'dmy'))));
+    let ai = imp.header.findIndex(c => /amount|amt|value/i.test(c) && !/balance/i.test(c));
+    if (ai < 0) ai = byName(/debit|withdraw|money out|paid out|spent/i);
+    if (ai < 0) ai = best(i => i === di ? -1 : share(i, v => /\d[.,]\d{2}\b/.test(v) && !isNaN(parseAmount(v))) - (/balance/i.test(imp.header[i]) ? 1 : 0));
+    let ti = byName(/desc|merchant|payee|name|details|memo|narrative|particulars|transaction$/i);
+    if (ti < 0 || ti === di || ti === ai) ti = best(i => i === di || i === ai ? -1 : sample.reduce((a, r) => a + (isNaN(parseAmount(r[i])) ? (r[i] || '').length : 0), 0));
+    mDate.value = di; mAmt.value = ai; mDesc.value = ti;
+
+    const dates = imp.body.map(r => (r[di] || '').match(/^(\d{1,2})[-/.](\d{1,2})[-/.]\d{2,4}/)).filter(Boolean);
+    mOrder.value = dates.some(r => +r[1] > 12) ? 'dmy' : dates.some(r => +r[2] > 12) ? 'mdy' : (navigator.language || 'en-US') === 'en-US' ? 'mdy' : 'dmy';
+    const amts = imp.body.map(r => parseAmount(r[ai])).filter(n => !isNaN(n) && n !== 0);
+    mSign.value = amts.filter(n => n < 0).length > amts.length / 3 ? 'neg' : 'pos';
+    updatePreview();
+  }
+
+  function updatePreview() {
+    const di = +mDate.value, ti = +mDesc.value, ai = +mAmt.value, order = mOrder.value, sign = mSign.value === 'neg' ? -1 : 1;
+    const have = new Set(isDemo() && document.getElementById('fReplace').checked ? [] : data.tx.map(t => `${t.date}|${t.amount}|${t.merchant.toLowerCase()}`));
+    let income = 0, transfers = 0, bad = 0, dupes = 0;
+    imp.parsed = [];
+    for (const r of imp.body) {
+      const date = parseDate(r[di], order), raw = r[ti] || '', n = parseAmount(r[ai]);
+      // An empty "money out" cell means money came in.
+      if (date && raw && !(r[ai] || '').trim()) { income++; continue; }
+      if (!date || isNaN(n) || !raw) { bad++; continue; }
+      if (n === 0) continue;
+      if (Math.sign(n) !== sign) { income++; continue; }
+      if (/transfer (to|from)|to savings|from savings|payment.*thank you|autopay payment|credit card payment/i.test(raw)) { transfers++; continue; }
+      const merchant = cleanMerchant(raw), amount = Math.round(Math.abs(n) * 100) / 100;
+      const key = `${date}|${amount}|${merchant.toLowerCase()}`;
+      if (have.has(key)) { dupes++; continue; }
+      have.add(key);
+      imp.parsed.push({ date, merchant, amount, cat: guessCat(raw + ' ' + merchant) });
+    }
+    document.getElementById('importStep').hidden = false;
+    const p = imp.parsed;
+    if (!p.length) {
+      document.getElementById('importSum').innerHTML = dupes && !bad ? `All ${dupes} purchases in this file are already added.` : `No purchases found with these settings. Check that the columns are right and try switching <b>Purchases show as</b>.`;
+      document.getElementById('preview').innerHTML = '';
+      importGo.disabled = true; importGo.textContent = 'Import';
+      return;
+    }
+    const sorted = [...p].sort((a, b) => a.date.localeCompare(b.date));
+    const skipped = [income && `${income} ${income === 1 ? 'deposit or refund' : 'deposits or refunds'}`, transfers && `${transfers} ${transfers === 1 ? 'transfer' : 'transfers'} or card payments`, dupes && `${dupes} already added`, bad && `${bad} ${bad === 1 ? 'row' : 'rows'} without a date or amount`].filter(Boolean);
+    document.getElementById('importSum').innerHTML = `<b>${p.length} purchases</b> totalling <b class="num">${$(p.reduce((a, t) => a + t.amount, 0))}</b>, ${fmtShort(parse(sorted[0].date))} – ${fmtShort(parse(sorted[sorted.length - 1].date))}.${skipped.length ? `<br><span style="color:var(--muted)">Skipped ${skipped.join(', ')}.</span>` : ''}`;
+    const show = [...p].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
+    document.getElementById('preview').innerHTML = show.map(t => `<div class="pv">
+        <b>${esc(t.merchant)}</b><span class="num" style="font-weight:700">${$(t.amount)}</span>
+        <small><i class="dot" style="background:${color(t.cat)}"></i>${CAT[t.cat].name}</small><small class="num">${fmtShort(parse(t.date))}</small>
+      </div>`).join('') + (p.length > show.length ? `<div class="more">and ${p.length - show.length} more. You can change any category after importing.</div>` : '');
+    importGo.disabled = false;
+    importGo.textContent = `Import ${p.length}`;
+  }
+
+  function readFile(file) {
+    if (!file) return;
+    if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') return importError("PDF statements can't be read yet. Look for a \"Download transactions\" or \"Export\" option in your bank's app or website and choose CSV.");
+    if (file.size > 5e6) return importError('That file is over 5 MB. Export a shorter date range and try again.');
+    const r = new FileReader();
+    r.onload = () => loadCSV(String(r.result), file.name);
+    r.onerror = () => importError("Couldn't read that file. Try downloading it again.");
+    r.readAsText(file);
+  }
+
+  // A made-up checking-account export, in the raw style banks use, dated over the last few weeks.
+  function sampleCSV() {
+    const lines = ['Transaction Date,Description,Amount,Balance'];
+    const items = [
+      [1, 'POS PURCHASE STARBUCKS #10423 SEATTLE WA', -5.45], [1, 'SQ *BLUE BOTTLE COFFEE', -6.25], [2, 'TRADER JOES #552 SEATTLE WA', -64.18],
+      [3, 'UBER EATS 8005928996 CA', -28.4], [4, 'SHELL OIL 57444212345', -41.07], [5, 'PAYROLL DEPOSIT ACME CO', 1850],
+      [5, 'NETFLIX.COM', -15.49], [6, 'CHIPOTLE 1234 SEATTLE WA', -13.85], [7, 'AMAZON MKTPL*2K4L19', -36.99],
+      [8, 'ONLINE TRANSFER TO SAVINGS', -200], [8, 'POS PURCHASE STARBUCKS #10423 SEATTLE WA', -4.95], [9, 'VERIZON WIRELESS', -65],
+      [10, 'WHOLE FOODS MKT #10234', -52.6], [11, 'LYFT *RIDE SUN 10AM', -18.2], [12, 'CINEMA CITY TICKETS', -24],
+      [13, 'TARGET 00012345', -47.32], [14, 'POS PURCHASE STARBUCKS #10423 SEATTLE WA', -5.45], [15, 'PIZZA PALACE', -22.5],
+      [16, 'CVS PHARMACY #4521', -12.79], [17, 'TRADER JOES #552 SEATTLE WA', -58.9], [18, 'REFUND AMAZON MKTPL', 19.99],
+      [19, 'SQ *BLUE BOTTLE COFFEE', -6.25], [20, 'SHELL OIL 57444212345', -38.6], [21, 'SUSHI GO', -31.2],
+      [22, 'CITY GYM MEMBERSHIP', -30], [23, 'SPOTIFY USA', -11.99], [24, 'BURGER JOINT', -16.4], [25, 'ALDI 77812', -44.15],
+    ];
+    let bal = 2400;
+    for (const [ago, desc, amt] of items.reverse()) {
+      const d = addDays(today, -(26 - ago));
+      bal = Math.round((bal + amt) * 100) / 100;
+      lines.push(`${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()},"${desc}",${amt.toFixed(2)},${bal.toFixed(2)}`);
+    }
+    return lines.join('\n');
+  }
+
+  fFile.addEventListener('change', () => readFile(fFile.files[0]));
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); readFile(e.dataTransfer.files[0]); });
+  document.getElementById('sampleBtn').addEventListener('click', () => loadCSV(sampleCSV(), 'sample-statement.csv'));
+  for (const el of [mDate, mDesc, mAmt, mSign, mOrder, document.getElementById('fReplace')]) el.addEventListener('change', updatePreview);
+  document.getElementById('importCancel').addEventListener('click', closeImport);
+  importScrim.addEventListener('click', e => { if (e.target === importScrim) closeImport(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !importScrim.hidden) closeImport(); });
+  document.getElementById('importForm').addEventListener('submit', e => {
+    e.preventDefault();
+    if (!imp.parsed.length) return;
+    const replace = isDemo() && document.getElementById('fReplace').checked;
+    if (replace) { data.tx = []; data.nextId = 1; }
+    for (const t of imp.parsed) data.tx.push({ id: data.nextId++, ...t });
+    if (replace) data.demo = false;
+    const n = imp.parsed.length;
+    ui.week = Math.max(minWeek(), latestWeek());
+    ui.tab = 'activity';
+    save(); closeImport(); render(); window.scrollTo(0, 0);
+    toast(`Imported ${n} purchases`);
   });
 
   render();

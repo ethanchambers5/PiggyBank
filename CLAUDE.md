@@ -17,8 +17,13 @@ going over budget. The goal is a mobile app; for now it's a phone-sized web prot
 - **Spending**: purchases for the selected week grouped by day; tap one to edit, recategorize or delete.
 - **+ button**: add a purchase; category is auto-guessed from the merchant name (`RULES` keyword list).
 - **Budgets**: editable weekly budget per category with progress bars; reset demo data.
-- **Trends**: last 6 weeks stacked bar chart vs. budget line, average week per category.
-- Week switcher goes back 8 weeks. Weeks start Monday. Currency is USD.
+- **Trends**: last 6 weeks (ending at the latest week with purchases) stacked bar chart vs. budget line, average week per category.
+- **Import a bank statement**: CSV only, read in the browser (never uploaded). Auto-detects separator, header row,
+  date/description/amount columns, date order (MM/DD vs DD/MM) and whether purchases are negative or positive; the user
+  can override each in the sheet. Skips income, transfers/card payments and duplicates, cleans bank descriptions
+  (`cleanMerchant`) and auto-categorizes. First import can replace the demo data (`data.demo = false`).
+  Includes a built-in sample statement (`sampleCSV`). PDF statements are not supported yet.
+- Week switcher goes back 8 weeks, or further if imported purchases are older. Weeks start Monday. Currency is USD.
 - Always light theme with a white background (no dark mode, by request).
 
 ### Data
@@ -29,5 +34,5 @@ going over budget. The goal is a mobile app; for now it's a phone-sized web prot
 
 ## Ideas / next steps
 - Turn it into a real mobile app (e.g. React Native + Expo, or wrap the web app with Capacitor).
-- Real data: bank connection (e.g. Plaid) or CSV import from a bank statement.
+- Real data: bank connection (e.g. Plaid); PDF statement import.
 - Monthly view, custom categories, notifications when going over budget.
