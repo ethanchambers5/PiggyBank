@@ -54,6 +54,18 @@ button { cursor: pointer; }
 .brand h1 { font-family: var(--font-display); font-weight: 800; font-size: 24px; letter-spacing: -.02em; margin: 0; display: flex; align-items: center; gap: 8px; }
 .brand svg { width: 30px; height: 30px; flex: none; }
 .demo-tag { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 3px; background: var(--sunk); border-radius: 12px; }
+.seg button { border: 0; background: transparent; padding: 7px 0; border-radius: 9px; font-weight: 600; font-size: 14px; color: var(--muted); }
+.seg button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(42,27,34,.08), 0 2px 8px rgba(42,27,34,.06); }
+.month-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; width: 100%; text-align: left; background: transparent; border: 0; border-top: 1px solid var(--line); padding: 12px 16px; }
+.month-row:first-child { border-top: 0; }
+.month-row:hover { background: var(--sunk); }
+.month-row:disabled { cursor: default; }
+.month-row:disabled:hover { background: transparent; }
+.month-row b { font-weight: 600; }
+.month-row small { display: block; font-size: 12px; color: var(--muted); font-weight: 500; }
+.month-row .amt { text-align: right; font-weight: 700; }
+.month-row .bar { grid-column: 1 / -1; }
 .weekbar { display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
 .weekbar button { width: 36px; height: 36px; border-radius: 50%; border: 0; background: transparent; display: grid; place-items: center; font-size: 18px; }
 .weekbar button:hover:not(:disabled) { background: var(--sunk); }
@@ -248,6 +260,11 @@ main { display: grid; gap: 18px; padding-top: 6px; }
       </h1>
       <span class="demo-tag" id="demoTag" title="These are made-up transactions for trying the app">Demo data</span>
     </div>
+    <div class="seg" role="tablist" aria-label="Time period">
+      <button type="button" role="tab" data-unit="week">Week</button>
+      <button type="button" role="tab" data-unit="month">Month</button>
+      <button type="button" role="tab" data-unit="year">Year</button>
+    </div>
     <div class="weekbar" id="weekbar">
       <button type="button" id="prevWeek" aria-label="Previous week">‹</button>
       <div class="label"><b id="weekTitle">This week</b><span id="weekRange" class="num"></span></div>
@@ -394,7 +411,8 @@ main { display: grid; gap: 18px; padding-top: 6px; }
   const $0 = n => money0.format(Math.round(n));
 
   // ---------- Fake data ----------
-  const HISTORY_WEEKS = 8;
+  const HISTORY_WEEKS = 56; // about 13 months, so the Month and Year views have something to show
+  const DEMO_VERSION = 2;
   function seeded(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   function makeDemo() {
     const rnd = seeded(20261006);
@@ -428,52 +446,76 @@ main { display: grid; gap: 18px; padding-top: 6px; }
       }
       for (const r of MONTHLY) if (d.getDate() === r.day) tx.push({ id: id++, date, merchant: r.m, amount: between(...r.a), cat: r.cat });
     }
-    return { tx, budgets: Object.fromEntries(CATS.map(c => [c.id, c.budget])), nextId: id, demo: true };
+    return { tx, budgets: Object.fromEntries(CATS.map(c => [c.id, c.budget])), nextId: id, demo: true, demoVersion: DEMO_VERSION };
   }
 
   // ---------- State (kept in this browser only) ----------
   const KEY = 'piggybank.v1';
+  let staleDemo = false;
   function load() {
-    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && Array.isArray(s.tx)) return s; } catch (e) {}
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      // Older demo data only covered 8 weeks; swap it for the longer demo. Real data is never touched.
+      if (s && Array.isArray(s.tx) && !(s.demo !== false && s.demoVersion !== DEMO_VERSION)) return s;
+      if (s) staleDemo = true;
+    } catch (e) {}
     return makeDemo();
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} }
   let data = load();
-  let ui = { tab: 'home', week: 0, editing: null };
+  let ui = { tab: 'home', unit: 'week', off: 0, editing: null };
   try { const t = localStorage.getItem(KEY + '.tab'); if (t) ui.tab = t; } catch (e) {}
+  try { const u = localStorage.getItem(KEY + '.unit'); if (['week', 'month', 'year'].includes(u)) ui.unit = u; } catch (e) {}
 
   // ---------- Calculations ----------
   const isDemo = () => data.demo !== false;
   const weekOffOf = date => Math.round((mondayOf(parse(date)) - thisMonday) / (7 * DAY));
-  // Oldest week you can step back to: 8 weeks, or further if imported purchases go back further.
-  function minWeek() {
-    const oldest = data.tx.reduce((m, t) => t.date < m ? t.date : m, ymd(today));
-    return Math.min(-(HISTORY_WEEKS - 1), weekOffOf(oldest));
+  const UNIT = { week: 'week', month: 'month', year: 'year' };
+
+  // A period is one week, month or year; `off` counts back from the current one (0 = this week/month/year).
+  function period(unit, off) {
+    let start, end;
+    if (unit === 'week') { start = weekStart(off); end = addDays(start, 6); }
+    else if (unit === 'month') { start = new Date(today.getFullYear(), today.getMonth() + off, 1); end = new Date(start.getFullYear(), start.getMonth() + 1, 0); }
+    else { start = new Date(today.getFullYear() + off, 0, 1); end = new Date(start.getFullYear(), 11, 31); }
+    const totalDays = Math.round((end - start) / DAY) + 1;
+    const elapsed = end < today ? totalDays : start > today ? 0 : Math.round((today - start) / DAY) + 1;
+    return { unit, off, start, end, s: ymd(start), e: ymd(end), totalDays, elapsed, current: off === 0 };
   }
-  const latestWeek = () => data.tx.length ? Math.min(0, weekOffOf(data.tx.reduce((m, t) => t.date > m ? t.date : m, ''))) : 0;
-  function weekTx(off) {
-    const s = ymd(weekStart(off)), e = ymd(addDays(weekStart(off), 6));
-    return data.tx.filter(t => t.date >= s && t.date <= e);
+  function offOf(unit, date) {
+    if (unit === 'week') return weekOffOf(date);
+    const d = parse(date);
+    return unit === 'month' ? (d.getFullYear() - today.getFullYear()) * 12 + d.getMonth() - today.getMonth() : d.getFullYear() - today.getFullYear();
   }
-  function daysElapsed(off) { return off < 0 ? 7 : Math.round((today - weekStart(0)) / DAY) + 1; }
-  function summary(off) {
-    const list = weekTx(off);
+  const oldestDate = () => data.tx.reduce((m, t) => t.date < m ? t.date : m, ymd(today));
+  const latestDate = () => data.tx.reduce((m, t) => t.date > m ? t.date : m, '') || ymd(today);
+  // Oldest period you can step back to: the one holding your oldest purchase.
+  const minOff = unit => Math.min(0, offOf(unit, oldestDate()));
+  const latestOff = unit => Math.min(0, offOf(unit, latestDate()));
+  const cur = () => period(ui.unit, ui.off);
+  // Budgets are set per week; a month or year budget is the weekly one scaled by its number of days.
+  const scaled = (weekly, days) => weekly * days / 7;
+
+  function summary(p) {
+    const list = data.tx.filter(t => t.date >= p.s && t.date <= p.e);
     const byCat = Object.fromEntries(CATS.map(c => [c.id, 0]));
     for (const t of list) byCat[t.cat] = (byCat[t.cat] || 0) + t.amount;
     const total = list.reduce((a, t) => a + t.amount, 0);
-    const budget = CATS.reduce((a, c) => a + (+data.budgets[c.id] || 0), 0);
-    const days = daysElapsed(off);
+    const weekly = CATS.reduce((a, c) => a + (+data.budgets[c.id] || 0), 0);
+    const budget = scaled(weekly, p.totalDays);
+    const days = Math.max(p.elapsed, 1), partial = p.elapsed < p.totalDays;
+    const early = days < 3; // too soon to judge the pace
     const cats = CATS.map(c => {
-      const spent = byCat[c.id], b = +data.budgets[c.id] || 0;
-      const projected = days < 7 ? spent / days * 7 : spent;
+      const spent = byCat[c.id], b = scaled(+data.budgets[c.id] || 0, p.totalDays);
+      const projected = partial ? spent / days * p.totalDays : spent;
       let status = 'ok';
       if (spent > b) status = 'over';
-      else if (spent >= b * 0.85 || (days < 7 && days >= 3 && projected > b * 1.15)) status = 'warn';
+      else if (spent >= b * 0.85 || (partial && !early && projected > b * 1.15)) status = 'warn';
       return { ...c, spent, budget: b, projected, status };
     });
-    const projected = days < 7 ? total / days * 7 : total;
-    let status = total > budget ? 'over' : (total >= budget * .85 || (days < 7 && days >= 3 && projected > budget * 1.1)) ? 'warn' : 'ok';
-    return { list, total, budget, cats, days, projected, status };
+    const projected = partial ? total / days * p.totalDays : total;
+    const status = total > budget ? 'over' : (total >= budget * .85 || (partial && !early && projected > budget * 1.1)) ? 'warn' : 'ok';
+    return { p, list, total, budget, weekly, cats, days: p.elapsed, partial, projected, status };
   }
 
   // ---------- Rendering ----------
@@ -482,7 +524,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
   const color = id => `var(--c-${id})`;
   const statusPill = (st, s) => {
     if (st === 'over') return `<span class="pill over">${$0(s.total - s.budget)} over</span>`;
-    if (st === 'warn') return `<span class="pill warn">${s.days < 7 && s.total <= s.budget * .85 ? 'Spending fast' : 'Close to limit'}</span>`;
+    if (st === 'warn') return `<span class="pill warn">${s.partial && s.total <= s.budget * .85 ? 'Spending fast' : 'Close to limit'}</span>`;
     return `<span class="pill ok">Under budget</span>`;
   };
 
@@ -498,13 +540,27 @@ main { display: grid; gap: 18px; padding-top: 6px; }
   const budgetPct = c => c.budget ? Math.round(c.spent / c.budget * 100) : (c.spent ? 100 : 0);
 
   function header() {
-    const s = weekStart(ui.week), e = addDays(s, 6);
-    document.getElementById('weekTitle').textContent = ui.week === 0 ? 'This week' : ui.week === -1 ? 'Last week' : `${-ui.week} weeks ago`;
-    document.getElementById('weekRange').textContent = `${fmtShort(s)} – ${fmtShort(e)}`;
-    document.getElementById('nextWeek').disabled = ui.week >= 0;
-    document.getElementById('prevWeek').disabled = ui.week <= minWeek();
+    const p = cur(), u = ui.unit;
+    let title, sub;
+    if (u === 'week') {
+      title = p.off === 0 ? 'This week' : p.off === -1 ? 'Last week' : `${-p.off} weeks ago`;
+      sub = `${fmtShort(p.start)} – ${fmtShort(p.end)}`;
+    } else if (u === 'month') {
+      title = p.start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+      sub = p.off === 0 ? 'This month' : p.off === -1 ? 'Last month' : `${fmtShort(p.start)} – ${fmtShort(p.end)}`;
+    } else {
+      title = String(p.start.getFullYear());
+      sub = p.off === 0 ? 'This year' : p.off === -1 ? 'Last year' : 'Jan 1 – Dec 31';
+    }
+    document.getElementById('weekTitle').textContent = title;
+    document.getElementById('weekRange').textContent = sub;
+    const next = document.getElementById('nextWeek'), prev = document.getElementById('prevWeek');
+    next.disabled = ui.off >= 0;
+    prev.disabled = ui.off <= minOff(u);
+    next.setAttribute('aria-label', `Next ${u}`);
+    prev.setAttribute('aria-label', `Previous ${u}`);
+    document.querySelectorAll('[data-unit]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.unit === u)));
     document.getElementById('demoTag').hidden = !isDemo();
-    document.getElementById('weekbar').hidden = ui.tab === 'trends';
     document.querySelectorAll('.tab').forEach(b => b.toggleAttribute('aria-current', b.dataset.tab === ui.tab));
     document.querySelectorAll('.tab[aria-current]').forEach(b => b.setAttribute('aria-current', 'page'));
   }
@@ -519,9 +575,9 @@ main { display: grid; gap: 18px; padding-top: 6px; }
   }
 
   function renderHome() {
-    const s = summary(ui.week);
+    const s = summary(cur()), u = ui.unit;
     const pct = s.budget ? s.total / s.budget * 100 : 0;
-    const pacePct = s.days / 7 * 100;
+    const pacePct = s.days / s.p.totalDays * 100;
     const alerts = s.cats.filter(c => c.status !== 'ok').sort((a, b) => (b.spent - b.budget) - (a.spent - a.budget));
     const spentCats = s.cats.filter(c => c.spent > 0).sort((a, b) => b.spent - a.spent);
     const top = spentCats[0];
@@ -538,15 +594,15 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     view.innerHTML = `
       ${isDemo() ? `<div class="banner"><p>You're looking at made-up demo data.</p><button type="button" class="btn primary small" data-action="import">Import my statement</button></div>` : ''}
       <section class="card hero">
-        <div class="hero-row"><span class="eyebrow">Spent ${ui.week === 0 ? 'so far' : 'that week'}</span>${statusPill(s.status, s)}</div>
+        <div class="hero-row"><span class="eyebrow">Spent ${s.p.current ? `this ${u} so far` : `that ${u}`}</span>${statusPill(s.status, s)}</div>
         <div class="big num">${$(s.total)}<span class="of">of ${$0(s.budget)}</span></div>
-        <div class="meter" role="img" aria-label="${Math.round(pct)}% of weekly budget used">
+        <div class="meter" role="img" aria-label="${Math.round(pct)}% of the ${u}'s budget used">
           <div class="fill" style="width:${Math.min(pct, 100)}%;background:${meterColor(pct)}"></div>
-          ${s.days < 7 ? `<div class="pace" style="left:${pacePct}%" title="Where you'd be spending evenly"></div>` : ''}
+          ${s.partial && s.days > 0 ? `<div class="pace" style="left:${pacePct}%" title="Where you'd be spending evenly"></div>` : ''}
         </div>
         <div class="foot num">
           <span>${s.total <= s.budget ? `${$0(s.budget - s.total)} left` : `${$0(s.total - s.budget)} over`}</span>
-          <span>${s.days < 7 ? `Day ${s.days} of 7 · on pace for ${$0(s.projected)}` : `${s.list.length} purchases`}</span>
+          <span>${s.partial ? `Day ${s.days} of ${s.p.totalDays} · on pace for ${$0(s.projected)}` : `${s.list.length} purchases`}</span>
         </div>
       </section>
 
@@ -560,7 +616,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
               <span class="cat-name"><i class="dot" style="background:${color(c.id)}"></i>${c.name}</span>
               <span class="cat-amt num">${$(c.spent)}<small>of ${$0(c.budget)} · ${s.total ? Math.round(c.spent / s.total * 100) : 0}% of spending</small></span>
               <div class="bar" role="img" aria-label="${budgetPct(c)}% of ${c.name} budget used"><i style="width:${Math.min(budgetPct(c), 100)}%;background:${meterColor(budgetPct(c))}"></i></div>
-            </div>`).join('') : `<div class="empty">No spending this week yet.</div>`}
+            </div>`).join('') : `<div class="empty">No spending this ${u} yet.</div>`}
         </div>
       </section>
 
@@ -571,7 +627,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
   }
 
   function renderActivity() {
-    const s = summary(ui.week);
+    const s = summary(cur());
     const byDay = {};
     for (const t of s.list) (byDay[t.date] ||= []).push(t);
     const days = Object.keys(byDay).sort().reverse();
@@ -588,22 +644,39 @@ main { display: grid; gap: 18px; padding-top: 6px; }
           </button>
         </div>
         <h2>Purchases<small class="num">${s.list.length} · ${$(s.total)}</small></h2>
-        ${days.length ? days.map(d => {
+        ${ui.unit === 'year' ? yearMonths(s) : days.length ? days.map(d => {
           const list = byDay[d].sort((a, b) => b.id - a.id);
           return `<div class="day">
             <h3><span>${d === ymd(today) ? 'Today' : fmtDay(parse(d))}</span><span class="num">${$(list.reduce((a, t) => a + t.amount, 0))}</span></h3>
             <div class="card tx-list">${list.map(txRow).join('')}</div>
           </div>`;
-        }).join('') : `<div class="card empty">Nothing spent this week. Tap + to add a purchase.</div>`}
-        <p class="note">Tap a purchase to change its category or delete it.</p>
+        }).join('') : `<div class="card empty">Nothing spent this ${ui.unit}. Tap + to add a purchase.</div>`}
+        <p class="note">${ui.unit === 'year' ? 'Tap a month to see its purchases.' : 'Tap a purchase to change its category or delete it.'}</p>
       </section>`;
   }
 
+  // Year view of Spending: one row per month instead of hundreds of purchases.
+  function yearMonths(s) {
+    const y = s.p.start.getFullYear();
+    const rows = Array.from({ length: 12 }, (_, m) => {
+      const mp = period('month', offOf('month', ymd(new Date(y, m, 1))));
+      if (mp.start > today) return '';
+      const ms = summary(mp), pct = ms.budget ? ms.total / ms.budget * 100 : 0;
+      const name = mp.start.toLocaleDateString(undefined, { month: 'long' });
+      return `<button type="button" class="month-row" data-month="${mp.off}" ${ms.list.length ? '' : 'disabled'}>
+        <span><b>${name}</b><small class="num">${ms.list.length} purchases${ms.partial ? ' so far' : ''}</small></span>
+        <span class="amt num">${$(ms.total)}<small>of ${$0(ms.budget)}</small></span>
+        <div class="bar"><i style="width:${Math.min(pct, 100)}%;background:${meterColor(pct)}"></i></div>
+      </button>`;
+    }).reverse().join('');
+    return `<div class="card">${rows}</div>`;
+  }
+
   function renderBudgets() {
-    const s = summary(ui.week);
+    const s = summary(cur()), u = ui.unit;
     view.innerHTML = `
       <section class="section">
-        <h2>Weekly budgets<small>Spent ${ui.week === 0 ? 'this week' : 'that week'}</small></h2>
+        <h2>Budgets<small>Spent ${s.p.current ? `this ${u}` : `that ${u}`}</small></h2>
         <div class="card">
           ${s.cats.map(c => {
             const pct = c.budget ? c.spent / c.budget * 100 : (c.spent ? 100 : 0);
@@ -611,14 +684,15 @@ main { display: grid; gap: 18px; padding-top: 6px; }
             return `<div class="budget-row">
               <div>
                 <span class="cat-name"><i class="dot" style="background:${color(c.id)}"></i>${c.name}</span>
-                <span class="meta num">${$(c.spent)} spent${c.status === 'over' ? ` · <b style="color:var(--over)">${$0(c.spent - c.budget)} over</b>` : ` · ${$0(Math.max(c.budget - c.spent, 0))} left`}</span>
+                <span class="meta num">${$(c.spent)}${u === 'week' ? ' spent' : ` of ${$0(c.budget)}`}${c.status === 'over' ? ` · <b style="color:var(--over)">${$0(c.spent - c.budget)} over</b>` : ` · ${$0(Math.max(c.budget - c.spent, 0))} left`}</span>
               </div>
-              <label class="budget-input" for="b-${c.id}"><span>$</span><input id="b-${c.id}" class="num" inputmode="numeric" value="${c.budget}" data-budget="${c.id}" aria-label="${c.name} weekly budget"><span>/wk</span></label>
+              <label class="budget-input" for="b-${c.id}"><span>$</span><input id="b-${c.id}" class="num" inputmode="numeric" value="${+data.budgets[c.id] || 0}" data-budget="${c.id}" aria-label="${c.name} weekly budget"><span>/wk</span></label>
               <div class="bar"><i style="width:${Math.min(pct, 100)}%;background:${barColor}"></i></div>
             </div>`;
           }).join('')}
         </div>
-        <div class="card pad totals num"><span>Total weekly budget</span><span id="budgetTotal">${$0(s.budget)}</span></div>
+        <div class="card pad totals num"><span>Total weekly budget</span><span id="budgetTotal">${$0(s.weekly)}</span></div>
+        ${u === 'week' ? '' : `<p class="note">You set budgets per week. For ${u === 'month' ? 'this month' : 'the year'} that adds up to <b class="num">${$0(s.budget)}</b> (your weekly budget × ${s.p.totalDays} days ÷ 7).</p>`}
         <p class="note">Bills like rent or your phone plan are monthly, so some weeks they push Bills over. Set the budget to about a quarter of the monthly cost.</p>
       </section>
       <section class="section">
@@ -632,45 +706,59 @@ main { display: grid; gap: 18px; padding-top: 6px; }
   }
 
   function renderTrends() {
-    const N = 6;
-    const end = latestWeek();
-    const weeks = Array.from({ length: N }, (_, i) => { const off = end + i - (N - 1); return { off, ...summary(off) }; });
-    const budget = weeks[N - 1].budget;
-    const max = Math.max(budget, ...weeks.map(w => w.total)) * 1.1;
-    const step = max > 600 ? 200 : max > 300 ? 100 : 50;
-    const W = 340, H = 200, L = 40, R = 8, T = 12, B = 28;
+    const u = ui.unit, sel = cur();
+    // Week: 6 weeks up to the selected one. Month: 6 months. Year: the 12 months of that year.
+    const bucket = u === 'year' ? 'month' : u;
+    const periods = u === 'year'
+      ? Array.from({ length: 12 }, (_, m) => period('month', offOf('month', ymd(new Date(sel.start.getFullYear(), m, 1)))))
+      : Array.from({ length: 6 }, (_, i) => period(u, ui.off - 5 + i));
+    const rows = periods.map(p => summary(p));
+    const N = rows.length;
+    const max = Math.max(...rows.map(r => Math.max(r.budget, r.total))) * 1.1 || 1;
+    const nice = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000];
+    const step = nice.find(n => max / n <= 5) || 20000;
+    const W = 340, H = 200, L = 44, R = 8, T = 14, B = 28;
     const y = v => T + (H - T - B) * (1 - v / max);
     const bw = (W - L - R) / N;
     let grid = '';
     for (let v = 0; v <= max; v += step) grid += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${$0(v)}</text>`;
-    const bars = weeks.map((w, i) => {
-      const x = L + i * bw + bw * .18, w2 = bw * .64;
+    const label = p => bucket === 'week' ? (p.current ? 'Now' : fmtShort(p.start))
+      : p.start.toLocaleDateString(undefined, { month: 'short' }).slice(0, N > 6 ? 3 : 9);
+    const bars = rows.map((r, i) => {
+      const x = L + i * bw + bw * .18, w2 = bw * .64, cx = x + w2 / 2;
       let acc = 0;
-      const segs = w.cats.filter(c => c.spent > 0).map(c => { const y0 = y(acc), y1 = y(acc + c.spent); acc += c.spent; return `<rect x="${x}" y="${y1}" width="${w2}" height="${Math.max(y0 - y1, 0)}" fill="${color(c.id)}"><title>${c.name}: ${$(c.spent)}</title></rect>`; }).join('');
-      const label = w.off === 0 ? 'Now' : fmtShort(weekStart(w.off));
-      return `${segs}<text x="${x + w2 / 2}" y="${y(w.total) - 5}" text-anchor="middle" style="font-weight:700;fill:${w.total > w.budget ? 'var(--over)' : 'var(--ink)'}">${$0(w.total)}</text><text x="${x + w2 / 2}" y="${H - 8}" text-anchor="middle">${label}</text>`;
+      const segs = r.cats.filter(c => c.spent > 0).map(c => { const y0 = y(acc), y1 = y(acc + c.spent); acc += c.spent; return `<rect x="${x}" y="${y1}" width="${w2}" height="${Math.max(y0 - y1, 0)}" fill="${color(c.id)}"><title>${c.name}: ${$(c.spent)}</title></rect>`; }).join('');
+      const tick = r.p.start <= today ? `<line x1="${x - bw * .1}" x2="${x + w2 + bw * .1}" y1="${y(r.budget)}" y2="${y(r.budget)}" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="4 3"/>` : '';
+      // With 12 thin bars there is no room for a total above each one; the hover title carries it.
+      const total = N <= 6 && r.total > 0 ? `<text x="${cx}" y="${y(r.total) - 5}" text-anchor="middle" style="font-weight:700;fill:${r.total > r.budget ? 'var(--over)' : 'var(--ink)'}">${$0(r.total)}</text>` : '';
+      const over = N > 6 && r.total > r.budget && !r.partial ? `<circle cx="${cx}" cy="${y(r.total) - 6}" r="3" fill="var(--over)"/>` : '';
+      return `<g><title>${label(r.p)}: ${$(r.total)} of ${$0(r.budget)}</title>${segs}</g>${tick}${total}${over}<text x="${cx}" y="${H - 8}" text-anchor="middle" style="${r.p.start > today ? 'opacity:.45' : ''}">${label(r.p)}</text>`;
     }).join('');
-    const budgetLine = `<line x1="${L}" x2="${W - R}" y1="${y(budget)}" y2="${y(budget)}" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
 
-    const full = weeks.filter(w => w.off < 0);
-    if (!full.length) full.push(weeks[N - 1]);
+    // Averages use finished periods since your first purchase, so empty months before it don't drag them down.
+    const oldest = oldestDate();
+    let full = rows.filter(r => !r.partial && r.p.end < today && r.p.e >= oldest);
+    if (!full.length) full = rows.filter(r => r.p.start <= today).slice(-1);
+    const avgDays = full.reduce((a, r) => a + r.p.totalDays, 0) / full.length;
     const avgs = CATS.map(c => {
-      const avg = full.reduce((a, w) => a + w.cats.find(x => x.id === c.id).spent, 0) / full.length;
-      const overWeeks = full.filter(w => { const x = w.cats.find(k => k.id === c.id); return x.spent > x.budget; }).length;
-      return { ...c, avg, budget: +data.budgets[c.id] || 0, overWeeks };
+      const avg = full.reduce((a, r) => a + r.cats.find(x => x.id === c.id).spent, 0) / full.length;
+      const overCount = full.filter(r => { const x = r.cats.find(k => k.id === c.id); return x.spent > x.budget; }).length;
+      return { ...c, avg, budget: scaled(+data.budgets[c.id] || 0, avgDays), overCount };
     }).sort((a, b) => b.avg - a.avg);
-    const overCount = full.filter(w => w.total > w.budget).length;
+    const overCount = full.filter(r => r.total > r.budget).length;
+    const plural = bucket === 'week' ? 'weeks' : 'months';
+    const heading = u === 'year' ? `${sel.start.getFullYear()} by month` : `Last 6 ${plural}`;
 
     view.innerHTML = `
       <section class="section">
-        <h2>Last ${N} weeks<small>Over budget ${overCount} of ${full.length} full weeks</small></h2>
+        <h2>${heading}<small>Over budget ${overCount} of ${full.length} full ${full.length === 1 ? bucket : plural}</small></h2>
         <div class="card pad chart" style="display:grid;gap:10px">
-          <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly spending for the last ${N} weeks">${grid}${budgetLine}${bars}</svg>
-          <div class="legend">${CATS.map(c => `<span><i style="background:${color(c.id)}"></i>${c.name}</span>`).join('')}<span><i style="background:none;border-top:2px dashed var(--ink);border-radius:0;height:0"></i>Budget ${$0(budget)}</span></div>
+          <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Spending per ${bucket}: ${heading}">${grid}${bars}</svg>
+          <div class="legend">${CATS.map(c => `<span><i style="background:${color(c.id)}"></i>${c.name}</span>`).join('')}<span><i style="background:none;border-top:2px dashed var(--ink);border-radius:0;height:0"></i>Budget</span>${N > 6 ? `<span><i style="background:var(--over);border-radius:50%"></i>Over budget</span>` : ''}</div>
         </div>
       </section>
       <section class="section">
-        <h2>Average week<small>Over the last ${full.length} full weeks</small></h2>
+        <h2>Average ${bucket}<small>Over ${full.length} full ${full.length === 1 ? bucket : plural}</small></h2>
         <div class="card" style="overflow-x:auto">
           <table class="avg-table num">
             <thead><tr><th>Category</th><th>Avg</th><th>Budget</th><th>Over</th></tr></thead>
@@ -678,7 +766,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
               <td><span class="cat-name"><i class="dot" style="background:${color(c.id)}"></i>${c.name}</span></td>
               <td style="font-weight:700;${c.avg > c.budget ? 'color:var(--over)' : ''}">${$0(c.avg)}</td>
               <td>${$0(c.budget)}</td>
-              <td>${c.overWeeks ? `<span class="pill ${c.overWeeks >= 3 ? 'over' : 'warn'}">${c.overWeeks}</span>` : '<span style="color:var(--muted)">0</span>'}</td>
+              <td>${c.overCount ? `<span class="pill ${c.overCount >= Math.max(3, full.length / 2) ? 'over' : 'warn'}">${c.overCount}</span>` : '<span style="color:var(--muted)">0</span>'}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>
@@ -713,8 +801,8 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     fAmount.value = tx ? tx.amount.toFixed(2) : '';
     fMerchant.value = tx ? tx.merchant : '';
     fCat.value = tx ? tx.cat : 'auto';
-    const wk = weekStart(ui.week);
-    fDate.value = tx ? tx.date : ui.week === 0 ? ymd(today) : ymd(addDays(wk, 6));
+    const p = cur();
+    fDate.value = tx ? tx.date : p.current ? ymd(today) : p.e;
     formErr.hidden = true;
     updateGuess();
     receipt.reset(tx);
@@ -737,7 +825,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     receipt.commit(tx);
     const wasEdit = !!ui.editing;
     // Jump to the week the purchase landed in.
-    ui.week = Math.min(0, weekOffOf(fDate.value));
+    ui.off = Math.min(0, offOf(ui.unit, fDate.value));
     save(); closeSheet(); render();
     toast(wasEdit ? 'Saved' : `Added to ${CAT[cat].name}`);
   });
@@ -918,6 +1006,7 @@ Rules:
     return { reset, cancel, take, commit };
   })();
   photoView.addEventListener('click', () => { photoView.hidden = true; });
+  if (staleDemo) { receiptStore.clear(); save(); }
   fReceipt.addEventListener('change', () => {
     const file = fReceipt.files[0];
     fReceipt.value = '';
@@ -934,14 +1023,26 @@ Rules:
     clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 1800);
   }
   document.getElementById('addBtn').addEventListener('click', () => openSheet(null));
-  document.getElementById('prevWeek').addEventListener('click', () => { ui.week--; render(); });
-  document.getElementById('nextWeek').addEventListener('click', () => { ui.week++; render(); });
+  document.getElementById('prevWeek').addEventListener('click', () => { ui.off--; render(); });
+  document.getElementById('nextWeek').addEventListener('click', () => { ui.off++; render(); });
+  // Switching Week/Month/Year keeps you around the same date: the new period holds the end of the old one.
+  function setUnit(unit) {
+    if (unit === ui.unit) return;
+    const p = cur(), anchor = p.end < today ? p.e : ymd(today);
+    ui.unit = unit;
+    ui.off = Math.max(minOff(unit), Math.min(0, offOf(unit, anchor)));
+    try { localStorage.setItem(KEY + '.unit', unit); } catch (e) {}
+    render();
+  }
+  document.querySelectorAll('[data-unit]').forEach(b => b.addEventListener('click', () => setUnit(b.dataset.unit)));
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
   function go(tab) { ui.tab = tab; try { localStorage.setItem(KEY + '.tab', tab); } catch (e) {} render(); window.scrollTo(0, 0); }
 
   view.addEventListener('click', e => {
     const tx = e.target.closest('.tx');
     if (tx) return openSheet(data.tx.find(t => t.id === +tx.dataset.id));
+    const month = e.target.closest('[data-month]');
+    if (month) { ui.unit = 'month'; ui.off = +month.dataset.month; try { localStorage.setItem(KEY + '.unit', 'month'); } catch (err) {} render(); window.scrollTo(0, 0); return; }
     const goBtn = e.target.closest('[data-go]');
     if (goBtn) return go(goBtn.dataset.go);
     if (e.target.id === 'resetBtn') {
@@ -950,7 +1051,7 @@ Rules:
     }
     if (e.target.closest('[data-action="import"]')) return openImport();
     if (e.target.id === 'resetNo') return render();
-    if (e.target.id === 'resetYes') { receiptStore.clear(); data = makeDemo(); ui.week = 0; save(); render(); toast('Demo data reset'); }
+    if (e.target.id === 'resetYes') { receiptStore.clear(); data = makeDemo(); ui.off = 0; save(); render(); toast('Demo data reset'); }
   });
   view.addEventListener('change', e => {
     const id = e.target.dataset.budget;
@@ -1165,7 +1266,7 @@ Rules:
     for (const t of imp.parsed) data.tx.push({ id: data.nextId++, ...t });
     if (replace) data.demo = false;
     const n = imp.parsed.length;
-    ui.week = Math.max(minWeek(), latestWeek());
+    ui.off = latestOff(ui.unit);
     ui.tab = 'activity';
     save(); closeImport(); render(); window.scrollTo(0, 0);
     toast(`Imported ${n} purchases`);
