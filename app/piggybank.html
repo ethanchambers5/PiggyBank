@@ -209,6 +209,25 @@ main { display: grid; gap: 18px; padding-top: 6px; }
 .check input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); flex: none; }
 .btn:disabled { opacity: .45; cursor: default; }
 
+/* Receipts */
+.receipt-pick { display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; text-align: center; }
+.receipt-pick svg { width: 20px; height: 20px; flex: none; }
+.receipt-box { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: center; padding: 10px; border-radius: 14px; background: var(--sunk); }
+.receipt-box img { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; background: var(--line); cursor: zoom-in; display: block; }
+.receipt-box .rmain { min-width: 0; font-size: 13.5px; }
+.receipt-box .rmain b { display: block; font-size: 14px; }
+.receipt-box .rmain span { color: var(--muted); }
+.receipt-box .rmain.reading b::after { content: ""; display: inline-block; width: 10px; height: 10px; margin-left: 8px; border-radius: 50%; border: 2px solid var(--accent); border-right-color: transparent; animation: spin .8s linear infinite; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .receipt-box .rmain.reading b::after { animation: none; } }
+.receipt-box .linkbtn { padding: 6px 4px; font-size: 14px; }
+.has-receipt { display: inline-flex; vertical-align: -2px; margin-left: 6px; color: var(--muted); }
+.has-receipt svg { width: 14px; height: 14px; }
+.photo-view { position: fixed; inset: 0; z-index: 40; background: rgba(15,8,12,.92); display: grid; place-items: center; padding: 16px; cursor: zoom-out; }
+.photo-view img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+.cta-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cta-row .import-cta { padding: 12px; gap: 10px; align-items: flex-start; flex-direction: column; cursor: pointer; }
+
 .toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-weight: 600; font-size: 14px; white-space: nowrap; }
 </style>
 
@@ -262,6 +281,12 @@ main { display: grid; gap: 18px; padding-top: 6px; }
 <div class="scrim" id="scrim" hidden>
   <form class="sheet" id="txForm" novalidate>
     <h2 id="sheetTitle">Add a purchase</h2>
+    <label class="btn ghost receipt-pick" for="fReceipt" id="receiptPick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span id="receiptPickText">Scan a receipt</span></label>
+    <div class="receipt-box" id="receiptBox" hidden>
+      <img id="receiptImg" alt="Receipt photo">
+      <div class="rmain" id="receiptMain"><b id="receiptStatus"></b><span id="receiptNote"></span></div>
+      <button type="button" class="linkbtn" id="receiptAction"></button>
+    </div>
     <div class="field">
       <label for="fAmount">Amount</label>
       <input id="fAmount" class="amount-input num" inputmode="decimal" placeholder="$0.00" autocomplete="off">
@@ -318,6 +343,9 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     </div>
   </form>
 </div>
+
+<input type="file" id="fReceipt" class="vh" accept="image/*" tabindex="-1" aria-hidden="true">
+<div class="photo-view" id="photoView" hidden><img id="photoViewImg" alt="Receipt photo, full size"></div>
 
 <div class="toast" id="toast" hidden></div>
 
@@ -485,7 +513,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     const c = CAT[t.cat] || CAT.other;
     return `<button class="tx" type="button" data-id="${t.id}">
       <span class="tx-ico" style="background:${color(c.id)}">${esc(t.merchant.trim()[0] || '?').toUpperCase()}</span>
-      <span class="tx-main"><b>${esc(t.merchant)}</b><span>${c.name}</span></span>
+      <span class="tx-main"><b>${esc(t.merchant)}</b><span>${c.name}${t.receipt ? `<span class="has-receipt" title="Receipt saved"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 3h12v18l-3-2-3 2-3-2-3 2z\"/><path d=\"M9 8h6M9 12h6M9 16h3\"/></svg></span>` : ''}</span></span>
       <span class="tx-amt num">${$(t.amount)}</span>
     </button>`;
   }
@@ -549,10 +577,16 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     const days = Object.keys(byDay).sort().reverse();
     view.innerHTML = `
       <section class="section">
-        <button type="button" class="card import-cta" data-action="import">
-          <span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg></span>
-          <span><b>Import a bank statement</b><span>Add purchases from a CSV file</span></span>
-        </button>
+        <div class="cta-row">
+          <label class="card import-cta" for="fReceipt">
+            <span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span>
+            <span><b>Scan a receipt</b><span>Snap a photo, we fill it in</span></span>
+          </label>
+          <button type="button" class="card import-cta" data-action="import">
+            <span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg></span>
+            <span><b>Import a statement</b><span>From your bank's CSV file</span></span>
+          </button>
+        </div>
         <h2>Purchases<small class="num">${s.list.length} · ${$(s.total)}</small></h2>
         ${days.length ? days.map(d => {
           const list = byDay[d].sort((a, b) => b.id - a.id);
@@ -683,10 +717,11 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     fDate.value = tx ? tx.date : ui.week === 0 ? ymd(today) : ymd(addDays(wk, 6));
     formErr.hidden = true;
     updateGuess();
+    receipt.reset(tx);
     scrim.hidden = false;
     setTimeout(() => (tx ? fCat : fAmount).focus(), 50);
   }
-  function closeSheet() { scrim.hidden = true; ui.editing = null; }
+  function closeSheet() { receipt.cancel(); scrim.hidden = true; ui.editing = null; }
 
   form.addEventListener('submit', e => {
     e.preventDefault();
@@ -696,8 +731,10 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     if (!merchant) return showErr('Enter where you spent it.');
     if (!fDate.value) return showErr('Pick a date.');
     const cat = fCat.value === 'auto' ? guessCat(merchant) : fCat.value;
-    if (ui.editing) Object.assign(data.tx.find(t => t.id === ui.editing), { amount, merchant, cat, date: fDate.value });
-    else data.tx.push({ id: data.nextId++, amount, merchant, cat, date: fDate.value });
+    let tx;
+    if (ui.editing) Object.assign(tx = data.tx.find(t => t.id === ui.editing), { amount, merchant, cat, date: fDate.value });
+    else data.tx.push(tx = { id: data.nextId++, amount, merchant, cat, date: fDate.value });
+    receipt.commit(tx);
     const wasEdit = !!ui.editing;
     // Jump to the week the purchase landed in.
     ui.week = Math.min(0, weekOffOf(fDate.value));
@@ -710,10 +747,184 @@ main { display: grid; gap: 18px; padding-top: 6px; }
   document.getElementById('cancelBtn').addEventListener('click', closeSheet);
   document.getElementById('delBtn').addEventListener('click', () => {
     data.tx = data.tx.filter(t => t.id !== ui.editing);
+    receiptStore.del(ui.editing);
     save(); closeSheet(); render(); toast('Deleted');
   });
   scrim.addEventListener('click', e => { if (e.target === scrim) closeSheet(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !scrim.hidden) closeSheet(); });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!photoView.hidden) photoView.hidden = true;
+    else if (!scrim.hidden) closeSheet();
+  });
+
+  // ---------- Receipts ----------
+  // Photos live in this browser's IndexedDB, keyed by purchase id; `tx.receipt` marks purchases that have one.
+  const receiptStore = (() => {
+    let dbp;
+    const open = () => dbp ||= new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open('piggybank', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('receipts');
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      } catch (e) { rej(e); }
+    });
+    // Resolves the request's result, or null if storage is unavailable.
+    const run = (mode, fn) => open().then(db => new Promise((res, rej) => {
+      const t = db.transaction('receipts', mode), req = fn(t.objectStore('receipts'));
+      t.oncomplete = () => res(req.result ?? true);
+      t.onerror = () => rej(t.error);
+    })).catch(() => null);
+    return {
+      get: id => run('readonly', s => s.get(id)),
+      put: (id, blob) => run('readwrite', s => s.put(blob, id)),
+      del: id => run('readwrite', s => s.delete(id)),
+      clear: () => run('readwrite', s => s.clear()),
+    };
+  })();
+
+  // Phone photos are huge; keep a 1600px JPEG, which is plenty to read and small to store.
+  function shrinkPhoto(file, max = 1600) {
+    return new Promise(res => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(b => res(b || file), 'image/jpeg', 0.8);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); res(null); };
+      img.src = url;
+    });
+  }
+
+  // Reading a receipt asks Claude (the artifact's `sample` capability). Outside the Claude viewer it's null.
+  let samplePromise, sampleDenied = false;
+  function getSample() {
+    return samplePromise ||= (async () => {
+      try {
+        const s = await window.claude?.use?.('sample');
+        if (!s) return null;
+        const lim = await s.limits().catch(() => null);
+        return lim?.images ? s : null;
+      } catch (e) { return null; }
+    })();
+  }
+  const receiptPrompt = () => `The image is a photo of a shop or restaurant receipt. Read it and reply with only a JSON object like:
+{"isReceipt": true, "merchant": "Trader Joe's", "total": 23.45, "date": "2026-11-03", "category": "groceries"}
+Rules:
+- merchant: the store or business name as a person would say it, in normal capitalization, without store numbers or addresses.
+- total: the final amount paid, including tax and tip, as a plain number. Not the subtotal.
+- date: the purchase date as YYYY-MM-DD, or null if you can't read it. Today is ${ymd(today)}; if the year is missing or unclear, use the most recent matching date that is not after today.
+- category: exactly one of these ids: ${CATS.map(c => `${c.id} (${c.name})`).join(', ')}.
+- If the image is not a receipt, reply {"isReceipt": false}.`;
+
+  const photoView = document.getElementById('photoView');
+  const fReceipt = document.getElementById('fReceipt');
+  const receipt = (() => {
+    const box = document.getElementById('receiptBox'), img = document.getElementById('receiptImg');
+    const pick = document.getElementById('receiptPick'), main = document.getElementById('receiptMain');
+    const action = document.getElementById('receiptAction');
+    let blob = null, removed = false, hadOne = false, ctl = null, stopped = null, url = null;
+
+    function show(b) {
+      if (url) URL.revokeObjectURL(url);
+      url = b ? URL.createObjectURL(b) : null;
+      if (url) img.src = url; else img.removeAttribute('src');
+      box.hidden = !b; pick.hidden = !!b;
+    }
+    function status(title, note, act, reading = false) {
+      document.getElementById('receiptStatus').textContent = title;
+      document.getElementById('receiptNote').textContent = note;
+      action.textContent = act;
+      main.classList.toggle('reading', reading);
+    }
+    function cancel() { if (ctl) { const c = ctl; ctl = null; c.abort(); } }
+    function reset(tx) {
+      cancel();
+      blob = null; removed = false; hadOne = !!(tx && tx.receipt);
+      show(null);
+      if (hadOne) receiptStore.get(tx.id).then(b => {
+        if (b instanceof Blob && ui.editing === tx.id && !blob && !removed) { show(b); status('Receipt saved', 'Tap the photo to see it full size.', 'Remove'); }
+      });
+    }
+    function apply(r) {
+      if (!r || r.isReceipt === false) return status("This doesn't look like a receipt", 'Try another photo, or fill in the details below.', 'Remove');
+      const total = Number(String(r.total ?? '').replace(/[^0-9.]/g, ''));
+      const merchant = String(r.merchant || '').trim().slice(0, 40);
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') && !isNaN(parse(r.date)) && r.date <= ymd(today) ? r.date : null;
+      if (total > 0) fAmount.value = total.toFixed(2);
+      if (merchant) fMerchant.value = merchant;
+      if (date) fDate.value = date;
+      if (CAT[r.category]) fCat.value = r.category;
+      updateGuess();
+      const missing = [!(total > 0) && 'total', !merchant && 'store', !date && 'date'].filter(Boolean);
+      status(missing.length ? 'Receipt partly read' : 'Receipt read',
+        missing.length ? `Couldn't read the ${missing.join(' or ')}. Fill it in below.` : 'Check the details below, then Save.', 'Remove');
+    }
+    async function take(file) {
+      cancel();
+      formErr.hidden = true;
+      const small = await shrinkPhoto(file);
+      if (!small) { if (!blob) show(null); return showErr("That file couldn't be opened as a photo. Try a JPEG or PNG."); }
+      blob = small; removed = false;
+      show(blob);
+      const sample = sampleDenied ? null : await getSample();
+      if (!sample) return status('Photo attached', "Reading receipts automatically isn't available here. Fill in the details below.", 'Remove');
+      const my = ctl = new AbortController();
+      status('Reading receipt', 'This usually takes a few seconds.', 'Stop', true);
+      try {
+        const r = await sample.json(receiptPrompt(), { images: [blob], signal: my.signal });
+        if (ctl === my) apply(r);
+      } catch (e) {
+        if (e.code === 'cancelled' && stopped !== my) return; // sheet closed or a new photo replaced it
+        const msg = {
+          cancelled: 'Stopped. Fill in the details below.',
+          not_granted: "Claude wasn't allowed to read it. Fill in the details below.",
+          sampling_disabled: "Reading receipts isn't available on this account. Fill in the details below.",
+          rate_limited: "Too many receipts at once. Try again in a minute, or fill in the details below.",
+          image_rejected: "That photo couldn't be read. Try a clearer, smaller photo.",
+          invalid_json: "Couldn't make sense of the receipt. Try a clearer photo, or fill in the details below.",
+          refused: "Couldn't read that photo. Fill in the details below.",
+        }[e.code] || "Couldn't read the receipt right now. Fill in the details below.";
+        if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'images_unavailable'].includes(e.code)) sampleDenied = true;
+        status('Photo attached', msg, 'Remove');
+      } finally { if (ctl === my) ctl = null; }
+    }
+    action.addEventListener('click', () => {
+      if (ctl) { stopped = ctl; return cancel(); }
+      blob = null; removed = hadOne;
+      show(null);
+    });
+    img.addEventListener('click', () => {
+      if (!url) return;
+      document.getElementById('photoViewImg').src = url;
+      photoView.hidden = false;
+    });
+    // Saves or removes the photo for the purchase that was just saved.
+    function commit(tx) {
+      cancel();
+      if (blob) {
+        tx.receipt = true;
+        receiptStore.put(tx.id, blob).then(ok => {
+          if (ok) return;
+          tx.receipt = false; save(); render();
+          toast("Couldn't save the receipt photo on this device");
+        });
+      } else if (removed) { tx.receipt = false; receiptStore.del(tx.id); }
+    }
+    return { reset, cancel, take, commit };
+  })();
+  photoView.addEventListener('click', () => { photoView.hidden = true; });
+  fReceipt.addEventListener('change', () => {
+    const file = fReceipt.files[0];
+    fReceipt.value = '';
+    if (!file) return;
+    if (scrim.hidden) openSheet(null);
+    receipt.take(file);
+  });
 
   // ---------- Events ----------
   let toastTimer;
@@ -739,7 +950,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     }
     if (e.target.closest('[data-action="import"]')) return openImport();
     if (e.target.id === 'resetNo') return render();
-    if (e.target.id === 'resetYes') { data = makeDemo(); ui.week = 0; save(); render(); toast('Demo data reset'); }
+    if (e.target.id === 'resetYes') { receiptStore.clear(); data = makeDemo(); ui.week = 0; save(); render(); toast('Demo data reset'); }
   });
   view.addEventListener('change', e => {
     const id = e.target.dataset.budget;
@@ -950,7 +1161,7 @@ main { display: grid; gap: 18px; padding-top: 6px; }
     e.preventDefault();
     if (!imp.parsed.length) return;
     const replace = isDemo() && document.getElementById('fReplace').checked;
-    if (replace) { data.tx = []; data.nextId = 1; }
+    if (replace) { data.tx = []; data.nextId = 1; receiptStore.clear(); }
     for (const t of imp.parsed) data.tx.push({ id: data.nextId++, ...t });
     if (replace) data.demo = false;
     const n = imp.parsed.length;

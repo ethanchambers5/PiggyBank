@@ -23,6 +23,11 @@ going over budget. The goal is a mobile app; for now it's a phone-sized web prot
   can override each in the sheet. Skips income, transfers/card payments and duplicates, cleans bank descriptions
   (`cleanMerchant`) and auto-categorizes. First import can replace the demo data (`data.demo = false`).
   Includes a built-in sample statement (`sampleCSV`). PDF statements are not supported yet.
+- **Scan a receipt** (Spending tab, or in the add/edit sheet): pick or take a photo; it is shrunk to a 1600px JPEG,
+  saved in IndexedDB (`receiptStore`, keyed by purchase id; `tx.receipt` flags it) and sent to Claude through the
+  artifact's `sample` capability (`sample.json` with `images`) to read store, total, date and category into the form.
+  The artifact must be published with `capabilities: {sample: {images: true}}`. Outside the Claude viewer (e.g. opening
+  `index.html` directly) the photo is still attached but the details are filled in by hand.
 - Week switcher goes back 8 weeks, or further if imported purchases are older. Weeks start Monday. Currency is USD.
 - Always light theme with a white background (no dark mode, by request).
 
